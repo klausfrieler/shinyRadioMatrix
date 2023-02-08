@@ -31,7 +31,12 @@
 #' @noRd
 #'
 generateRadioRow <- function(rowID, rowLLabel, rowRLabel, choiceNames, choiceValues,
-                             selected = NULL, labelsWidth = list(NULL, NULL)){
+                             selected = NULL, labelsWidth = list(NULL, NULL), 
+                             RLabelStyle = NULL,
+                             LLabelStyle = NULL,
+                             choiceStyle = NULL, 
+                             LLabPos = 0,
+                             RLabPos = length(choiceNames)){
 
 
   row_dat <- mapply(choiceNames, choiceValues, FUN = function(name, value){
@@ -42,27 +47,36 @@ generateRadioRow <- function(rowID, rowLLabel, rowRLabel, choiceNames, choiceVal
     if (value %in% selected)
       inputTag$attribs$checked <- "checked"
 
-    shiny::tags$td(inputTag)
+    if(!is.null(choiceStyle)) shiny::tags$td(inputTag, style = choiceStyle) else shiny::tags$td(inputTag)
   }, SIMPLIFY = FALSE, USE.NAMES = FALSE)
 
-  style <- NULL
-
+  #browser()
   if(!is.null(labelsWidth[[1]])){
-    style <- paste0(style, "min-width:", labelsWidth[[1]],";")
+    LLabelStyle <- paste0(c(LLabelStyle, sprintf("min-width:%s", labelsWidth[[1]])), collapse = ";")
   }
+  llab <- if (is.null(LLabelStyle)) shiny::tags$td(rowLLabel) else shiny::tags$td(rowLLabel, style = LLabelStyle)
+  
   if(!is.null(labelsWidth[[2]])){
-    style <- paste0(style, "max-width:", labelsWidth[[2]],";")
+    RLabelStyle <- paste0(c(RLabelStyle, sprintf("max-width:%s", labelsWidth[[2]])), collapse = ";")
   }
-
-  row_dat <- list(shiny::tags$td(rowID),
-                  if (is.null(style)) shiny::tags$td(rowLLabel) else shiny::tags$td(rowLLabel, style = style),
-                  row_dat,
-                  if (!is.null(rowRLabel)) if (is.null(style)) shiny::tags$td(rowRLabel) else shiny::tags$td(rowRLabel, style = style)
-                  )
-
+  rlab <- if (!is.null(rowRLabel)) if (is.null(RLabelStyle)) shiny::tags$td(rowRLabel) else shiny::tags$td(rowRLabel, style = RLabelStyle)
+  
+  # row_dat <- list(shiny::tags$td(rowID),
+  #                 if (is.null(LLabelStyle)) shiny::tags$td(rowLLabel) else shiny::tags$td(rowLLabel, style = LLabelStyle),
+  #                 row_dat,
+  #                 if (!is.null(rowRLabel)) if (is.null(RLabelStyle)) shiny::tags$td(rowRLabel) else shiny::tags$td(rowRLabel, style = RLabelStyle)
+  # )
+  l <- length(row_dat)
+  LLabPos <- max(min(LLabPos, l), 0)
+  row_dat <- append(row_dat, list(llab), LLabPos)
+  l <- length(row_dat)
+  RLabPos <- max(min(RLabPos, l), 0)
+  row_dat <- append(row_dat, list(rlab), RLabPos)
+  
   shiny::tags$tr(name = rowID,
                  class = "shiny-radiomatrix-row", # used for CSS styling
-                 row_dat)
+                 list(shiny::tags$td(rowID), 
+                      row_dat))
 }
 
 
@@ -89,7 +103,10 @@ generateRadioRow <- function(rowID, rowLLabel, rowRLabel, choiceNames, choiceVal
 generateRadioMatrixHeader <- function(choiceNames, 
                                       rowLLabels, 
                                       rowRLabels,
-                                      rowIDsName){
+                                      rowIDsName, 
+                                      LLabPos = 0,
+                                      RLabPos = length(choiceNames) + 1){
+  #browser()
   if(!is.null(rowRLabels)){
     rRName <- ifelse(is.matrix(rowRLabels), colnames(rowRLabels), "")
     rLName <- ifelse(is.matrix(rowLLabels), colnames(rowLLabels), "")
@@ -100,11 +117,50 @@ generateRadioMatrixHeader <- function(choiceNames,
     header <- lapply(c(rowIDsName, rLName, choiceNames),
                      function(n){ shiny::tags$td(n)})
   }
-
+  header <- move_elements(header, from = c(2, length(header)), to = c(LLabPos + 2, RLabPos + 2))
   shiny::tags$tr(header)
 }
 
-
+move_elements <- function(vec_or_list, from, to){
+  v <- vec_or_list
+  l <- length(v)
+  #browser()
+  # print(sprintf("Entering with from = %s, to = %s", paste(from, collapse = ", "), paste(to, collapse = ", ")))
+  if(length(from) != length(to)){
+    stop(sprintf("Length of start and end position do not match"))
+  }
+  if(length(from) > 1){
+    for(i in seq_along(from)){
+      v <- move_elements(v, from[i], to[i])  
+      #print(sprintf("New v: %s", paste(unlist(v), collapse = " ")))
+    } 
+    return(v)
+  }
+  if(l == 0) return(v)
+  if(from < 1 || from > l){
+    return(v)
+    #stop(sprintf("Invalid start position: %s", paste(from, collapse = "")))
+  }
+  if(to < 1){
+    to <- 1
+  }
+  if (to > l){
+    #remove from list
+    to <- l
+  }
+  if(from == to) return(v)
+  if(from > to) {
+    to <- to - 1
+  }
+  idz <- as.list(1:length(v))
+  idz <- append(idz, idz[[from]], to)
+  if(from > to + 1) {
+    from <- from + 1
+  }
+  #browser()
+  idz[[from]] <- NULL
+  v[unlist(idz)]
+}
 #' Generate complete HTML markup for radioMatrixInput
 #'
 #' @param inputId The input slot that will be used to access the value.
@@ -152,9 +208,14 @@ generateRadioMatrix <- function (inputId,
                                  selected = NULL,
                                  rowIDsName = "ID",
                                  labelsWidth = list(NULL, NULL),
+                                 LLabelStyle = NULL,
+                                 RLabelStyle = NULL,
+                                 choiceStyle = NULL,
+                                 LLabPos = 0,
+                                 RLabPos = length(choiceNames),                                 
                                  session = shiny::getDefaultReactiveDomain()){
 
-  header <- generateRadioMatrixHeader(choiceNames, rowLLabels, rowRLabels, rowIDsName)
+  header <- generateRadioMatrixHeader(choiceNames, rowLLabels, rowRLabels, rowIDsName, LLabPos = LLabPos, RLabPos = RLabPos)
   rows <- lapply(1:length(rowIDs), function(i){
     generateRadioRow(
       rowID = rowIDs[[i]], 
@@ -163,7 +224,12 @@ generateRadioMatrix <- function (inputId,
       choiceNames = choiceNames, 
       choiceValues = choiceValues,
       selected = if (is.null(selected)) selected else selected[[i]],
-      labelsWidth = labelsWidth
+      labelsWidth = labelsWidth,
+      LLabelStyle = LLabelStyle,
+      RLabelStyle = RLabelStyle,
+      choiceStyle = choiceStyle,
+      LLabPos = LLabPos,
+      RLabPos = RLabPos
     )
   })
 
@@ -394,7 +460,12 @@ radioMatrixInput <- function(inputId,
                              choiceNames = NULL, 
                              choiceValues = NULL,
                              rowIDsName = "ID",
-                             labelsWidth = list(NULL, NULL)) {
+                             labelsWidth = list(NULL, NULL),
+                             LLabelStyle = NULL,
+                             RLabelStyle = NULL,
+                             choiceStyle = NULL,
+                             LLabPos = 0,
+                             RLabPos = length(choiceNames)) {
 
   # check the inputs
   args <- eval(parse(text = "shiny:::normalizeChoicesArgs(choices, choiceNames, choiceValues)"))
@@ -411,7 +482,12 @@ radioMatrixInput <- function(inputId,
     choiceNames = args$choiceNames, 
     choiceValues = args$choiceValues,
     rowIDsName = rowIDsName,
-    labelsWidth = labelsWidth
+    labelsWidth = labelsWidth,
+    LLabelStyle = LLabelStyle,
+    RLabelStyle = RLabelStyle,
+    choiceStyle = choiceStyle,
+    LLabPos = LLabPos,
+    RLabPos = RLabPos
   )
 
   divClass <- "form-group shiny-radiomatrix-container dataTable-container"
