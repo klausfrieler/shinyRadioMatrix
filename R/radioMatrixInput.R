@@ -37,11 +37,11 @@ generateRadioRow <- function(rowID, rowLLabel, rowRLabel, choiceNames, choiceVal
                              choiceStyle = NULL, 
                              LLabPos = 0,
                              RLabPos = length(choiceNames)){
-
-
+  row_name <- get_most_inner_child(rowID)
   row_dat <- mapply(choiceNames, choiceValues, FUN = function(name, value){
 
-    inputTag <- shiny::tags$input(type = "radio", name = rowID,
+    inputTag <- shiny::tags$input(type = "radio", 
+                                  name = row_name,
                                   title = value, # to provide tooltips with the value
                                   value = value)
     if (value %in% selected)
@@ -57,7 +57,7 @@ generateRadioRow <- function(rowID, rowLLabel, rowRLabel, choiceNames, choiceVal
   llab <- if (is.null(LLabelStyle)) shiny::tags$td(rowLLabel) else shiny::tags$td(rowLLabel, style = LLabelStyle)
   
   if(!is.null(labelsWidth[[2]])){
-    RLabelStyle <- paste0(c(RLabelStyle, sprintf("max-width:%s", labelsWidth[[2]])), collapse = ";")
+    RLabelStyle <- paste0(c(RLabelStyle, sprintf("min-width:%s;text-align:left", labelsWidth[[2]])), collapse = ";")
   }
   rlab <- if (!is.null(rowRLabel)) if (is.null(RLabelStyle)) shiny::tags$td(rowRLabel) else shiny::tags$td(rowRLabel, style = RLabelStyle)
   
@@ -73,7 +73,7 @@ generateRadioRow <- function(rowID, rowLLabel, rowRLabel, choiceNames, choiceVal
   RLabPos <- max(min(RLabPos, l), 0)
   row_dat <- append(row_dat, list(rlab), RLabPos)
   
-  shiny::tags$tr(name = rowID,
+  shiny::tags$tr(name = row_name,
                  class = "shiny-radiomatrix-row", # used for CSS styling
                  list(shiny::tags$td(rowID), 
                       row_dat))
@@ -161,6 +161,12 @@ move_elements <- function(vec_or_list, from, to){
   idz[[from]] <- NULL
   v[unlist(idz)]
 }
+
+get_most_inner_child <- function(shiny_tag){
+  ch <- shiny_tag$children
+  while(length(ch$children)) ch <- ch$children
+  as.character(unname(unlist(ch)))
+}
 #' Generate complete HTML markup for radioMatrixInput
 #'
 #' @param inputId The input slot that will be used to access the value.
@@ -214,7 +220,6 @@ generateRadioMatrix <- function (inputId,
                                  LLabPos = 0,
                                  RLabPos = length(choiceNames),                                 
                                  session = shiny::getDefaultReactiveDomain()){
-
   header <- generateRadioMatrixHeader(choiceNames, rowLLabels, rowRLabels, rowIDsName, LLabPos = LLabPos, RLabPos = RLabPos)
   rows <- lapply(1:length(rowIDs), function(i){
     generateRadioRow(
@@ -338,8 +343,8 @@ validateParams <- function(rowIDs,
          "The object 'choiceNames' has to be a vector with at least one element.")
   }
 
-  if (!(is.list(labelsWidth) & length(labelsWidth) == 2)){
-    stop("The object 'labelsWidth' must be a list with two elements.")
+  if (length(labelsWidth) != 2){
+    stop("The object 'labelsWidth' must be a list or vector with two elements.")
   }
   
   if (!(is.character(rowIDsName) && length(rowIDsName) == 1)){
@@ -470,6 +475,7 @@ radioMatrixInput <- function(inputId,
   # check the inputs
   args <- eval(parse(text = "shiny:::normalizeChoicesArgs(choices, choiceNames, choiceValues)"))
   selected <- eval(parse(text = "shiny::restoreInput(id = inputId, default = selected)"))
+  labelsWidth <- as.list(labelsWidth)
   validateParams(rowIDs, rowLLabels, rowRLabels, selected, args$choiceNames, rowIDsName, labelsWidth)
 
   # generate the HTML for the controller itself
